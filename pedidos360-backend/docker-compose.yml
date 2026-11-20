@@ -1,0 +1,130 @@
+# Levanta Pedidos360 completo en tu máquina (necesita ~6 GB de RAM libres):
+#
+#   1) docker compose -f infra/kafka/docker-compose.yml up -d        (3 Zookeeper + 3 brokers + tópicos)
+#   2) docker compose up --build -d                                  (RabbitMQ + microservicios + BFF)
+#   3) docker compose -f infra/kafka/docker-compose.kafka-ui.yml up -d   (Kafka UI, opcional)
+#
+# El script levantar.sh hace los tres pasos. RabbitMQ aquí es de 1 nodo (desarrollo);
+# el cluster de 2 nodos para AWS está en infra/rabbitmq/.
+name: pedidos360
+
+x-java: &java
+  restart: unless-stopped
+  networks: [default, kafka]
+  environment: &java-env
+    JAVA_OPTS: -Xmx192m -XX:+UseSerialGC
+
+x-rabbit-env: &rabbit-env
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+
+x-kafka-env: &kafka-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ms-productos:
+    <<: *java
+    build: ./ms-productos
+    ports: ["8081:8081"]
+    environment:
+      <<: [*java-env, *kafka-env]
+
+  ms-clientes:
+    <<: *java
+    build: ./ms-clientes
+    ports: ["8082:8082"]
+
+  ms-pedidos:
+    <<: *java
+    build: ./ms-pedidos
+    ports: ["8083:8083"]
+    environment:
+      <<: [*java-env, *rabbit-env, *kafka-env]
+      MS_PRODUCTOS_URL: http://ms-productos:8081
+      MS_CLIENTES_URL: http://ms-clientes:8082
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+      ms-productos: { condition: service_started }
+      ms-clientes: { condition: service_started }
+
+  ms-notificaciones:
+    <<: *java
+    build: ./ms-notificaciones
+    ports: ["8084:8084"]
+    environment:
+      <<: [*java-env, *rabbit-env]
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+
+  ms-despacho:
+    <<: *java
+    build: ./ms-despacho
+    ports: ["8085:8085"]
+    environment:
+      <<: [*java-env, *rabbit-env, *kafka-env]
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+
+  ms-analitica:
+    <<: *java
+    build: ./ms-analitica
+    ports: ["8088:8088"]
+    environment:
+      <<: [*java-env, *kafka-env]
+
+  ms-kafka-admin:
+    <<: *java
+    build: ./ms-kafka-admin
+    ports: ["8086:8086"]
+    environment:
+      <<: [*java-env, *kafka-env]
+
+  ms-rabbitmq-admin:
+    <<: *java
+    build: ./ms-rabbitmq-admin
+    ports: ["8087:8087"]
+    environment:
+      <<: [*java-env, *rabbit-env]
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+
+  bff:
+    <<: *java
+    build: ./bff
+    ports: ["8080:8080"]
+    environment:
+      <<: [*java-env, *rabbit-env]
+      MS_PEDIDOS_URL: http://ms-pedidos:8083
+      MS_PRODUCTOS_URL: http://ms-productos:8081
+      MS_CLIENTES_URL: http://ms-clientes:8082
+      MS_DESPACHO_URL: http://ms-despacho:8085
+      MS_ANALITICA_URL: http://ms-analitica:8088
+      CORS_ORIGENES: ${CORS_ORIGENES:-http://localhost:4200}
+      JWT_ISSUER: ${JWT_ISSUER:-}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-}
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+      ms-pedidos: { condition: service_started }
+      ms-despacho: { condition: service_started }
+
+# Red del cluster Kafka (la crea infra/kafka/docker-compose.yml; por eso se levanta primero)
+networks:
+  kafka:
+    name: pedidos360-kafka
+    external: true

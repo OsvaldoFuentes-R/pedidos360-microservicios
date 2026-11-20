@@ -1,0 +1,51 @@
+server:
+  port: ${PORT:8081}
+
+spring:
+  application:
+    name: ms-productos
+  # Base de datos. Por defecto H2 en memoria (desarrollo). Para PostgreSQL en la nube (RDS) se definen
+  # DB_URL (jdbc:postgresql://HOST:5432/BASE?sslmode=require&currentSchema=productos), DB_USER y DB_PASSWORD
+  # como variables de entorno; no se escriben credenciales en este archivo.
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:productosdb;DB_CLOSE_DELAY=-1}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO:update}
+    open-in-view: false
+  h2:
+    console:
+      enabled: ${H2_CONSOLE:false}
+  # Kafka (streaming de eventos). Fuera de Docker: localhost:9092,9093,9094. En AWS: KAFKA_BOOTSTRAP_SERVERS.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093,localhost:9094}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all                     # el líder espera a las réplicas en sincronía (min.insync.replicas=2)
+      retries: 3
+      properties:
+        enable.idempotence: true    # reintentos sin duplicados
+        spring.json.add.type.headers: false
+        # Si Kafka cae, la API no debe quedar colgada: se espera poco y se registra el error.
+        max.block.ms: 3000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+
+# Endpoints de salud para Docker / balanceadores (/actuator/health)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Tópicos Kafka que declara este servicio (3 particiones y 3 réplicas; coinciden con infra/kafka/crear-topicos.sh)
+pedidos360:
+  kafka:
+    topics:
+      inventario-movimientos: inventario.movimientos
+      particiones: 3
+      replicas: 3
+      retencion-ms: 86400000

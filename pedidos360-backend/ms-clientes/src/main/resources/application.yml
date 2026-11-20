@@ -1,0 +1,27 @@
+server:
+  port: ${PORT:8082}
+
+spring:
+  application:
+    name: ms-clientes
+  # Base de datos. Por defecto H2 en memoria (desarrollo). Para PostgreSQL en la nube (RDS) se definen
+  # DB_URL (jdbc:postgresql://HOST:5432/BASE?sslmode=require&currentSchema=clientes), DB_USER y DB_PASSWORD
+  # como variables de entorno; no se escriben credenciales en este archivo.
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:clientesdb;DB_CLOSE_DELAY=-1}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO:update}
+    open-in-view: false
+  h2:
+    console:
+      enabled: ${H2_CONSOLE:false}
+
+# Endpoints de salud para Docker / balanceadores (/actuator/health)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

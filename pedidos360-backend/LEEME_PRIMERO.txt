@@ -1,0 +1,16 @@
+FASE 2 (EP5/EP6): Kafka + administradores + analitica + BD cloud.   NO se subio nada a GitHub.
+
+Este zip CONTIENE TODO el repositorio reestructurado (reemplaza al zip anterior).
+
+1) En tu PC, dentro del repo clonado:  git pull  y  git checkout -b reestructuracion
+2) Extrae este zip ENCIMA de la raiz del repo.
+3) bash reestructurar.sh     (git rm pedidos360-bff, git mv pedidos360-frontend frontend)
+4) Prueba cada servicio:  cd ms-xxx && ./mvnw test   (ms-productos, ms-clientes, ms-pedidos, ms-notificaciones,
+   ms-despacho, ms-analitica, ms-kafka-admin, ms-rabbitmq-admin, bff)
+5) Todo junto:  ./levantar.sh   (necesita ~6 GB de RAM libres)
+6) Guia de la presentacion: docs/presentacion-ep6.md   |   mapa de la pauta: docs/cumplimiento-pauta.md
+7) Si todo funciona:  git add -A && git commit -m "Microservicios, Kafka y administradores" && git push -u origin reestructuracion
+
+IMPORTANTE: no pude compilar ni ejecutar nada (sin acceso a Maven ni a un broker Kafka en mi entorno): solo
+revise sintaxis. Si algun ./mvnw test o algun contenedor falla, pegame el error y lo corrijo.
+Pendiente para tu equipo: crear el API Manager (API Gateway) con el JWT authorizer, la EC2 de Kafka y la RDS.

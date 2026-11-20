@@ -1,0 +1,58 @@
+server:
+  port: ${PORT:8088}
+
+spring:
+  application:
+    name: ms-analitica
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:analiticadb;DB_CLOSE_DELAY=-1}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO:update}
+    open-in-view: false
+  h2:
+    console:
+      enabled: ${H2_CONSOLE:false}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093,localhost:9094}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest      # un grupo nuevo lee el topico desde el principio
+      enable-auto-commit: false        # el offset se confirma solo tras procesar el mensaje
+      max-poll-records: 50
+    producer:                          # solo se usa para enviar mensajes fallidos a las DLT
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        max.block.ms: 3000
+    listener:
+      ack-mode: record
+      concurrency: 3                   # 1 hilo por particion (los topicos tienen 3)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+pedidos360:
+  kafka:
+    topics:
+      pedidos-eventos: pedidos.eventos
+      inventario-movimientos: inventario.movimientos
+      sufijo-dlt: .dlt
+      particiones: 3
+      replicas: 3
+    # Consumer groups: cada grupo recibe TODOS los mensajes del topico (publicacion/suscripcion);
+    # dentro de un mismo grupo las particiones se reparten entre las instancias del servicio.
+    grupos:
+      kpis: analitica-kpis
+      inventario: analitica-inventario
+      auditoria: analitica-auditoria
+    reintentos:
+      intervalo-ms: 1000
+      maximo: 2

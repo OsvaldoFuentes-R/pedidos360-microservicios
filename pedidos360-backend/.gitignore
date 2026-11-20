@@ -1,0 +1,14 @@
+# Secretos: nunca se suben
+.env
+*.pem
+*.key
+
+# Compilados e IDE
+target/
+node_modules/
+dist/
+.angular/
+.idea/
+.vscode/
+*.iml
+.mvn/wrapper/maven-wrapper.jar

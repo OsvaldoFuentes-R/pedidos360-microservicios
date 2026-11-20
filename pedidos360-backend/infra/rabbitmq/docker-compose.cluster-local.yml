@@ -1,0 +1,59 @@
+# Cluster de 2 nodos RabbitMQ en UNA sola máquina (para desarrollo o demostración).
+# En AWS se usan docker-compose.nodo1.yml / nodo2.yml (un nodo por EC2).
+#   docker compose -f docker-compose.cluster-local.yml up -d
+#   (el job "rabbit-cluster" une el nodo 2 al nodo 1 y crea la política de espejado)
+name: pedidos360-rabbit-cluster
+
+x-rabbit: &rabbit
+  image: rabbitmq:3.13-management
+  restart: unless-stopped
+  environment: &rabbit-env
+    RABBITMQ_ERLANG_COOKIE: ${ERLANG_COOKIE:-cookie-solo-para-desarrollo}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+
+services:
+  rabbitmq-nodo1:
+    <<: *rabbit
+    container_name: rabbitmq-nodo1
+    hostname: rabbitmq-nodo1
+    ports: ["5672:5672", "15672:15672"]
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbitmq-nodo1
+    volumes: [rabbit1-data:/var/lib/rabbitmq]
+
+  rabbitmq-nodo2:
+    <<: *rabbit
+    container_name: rabbitmq-nodo2
+    hostname: rabbitmq-nodo2
+    ports: ["5673:5672", "15673:15672"]
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbitmq-nodo2
+    volumes: [rabbit2-data:/var/lib/rabbitmq]
+    depends_on: [rabbitmq-nodo1]
+
+  rabbit-cluster:
+    image: rabbitmq:3.13-management
+    container_name: rabbit-cluster-init
+    restart: "no"
+    depends_on: [rabbitmq-nodo1, rabbitmq-nodo2]
+    environment:
+      RABBITMQ_ERLANG_COOKIE: ${ERLANG_COOKIE:-cookie-solo-para-desarrollo}
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+        until rabbitmqctl -n rabbit@rabbitmq-nodo1 await_startup --timeout 120 2>/dev/null; do sleep 3; done
+        until rabbitmqctl -n rabbit@rabbitmq-nodo2 await_startup --timeout 120 2>/dev/null; do sleep 3; done
+        rabbitmqctl -n rabbit@rabbitmq-nodo2 stop_app
+        rabbitmqctl -n rabbit@rabbitmq-nodo2 reset
+        rabbitmqctl -n rabbit@rabbitmq-nodo2 join_cluster rabbit@rabbitmq-nodo1
+        rabbitmqctl -n rabbit@rabbitmq-nodo2 start_app
+        rabbitmqctl -n rabbit@rabbitmq-nodo1 set_policy ha-pedidos "^pedidos\." '{"ha-mode":"all","ha-sync-mode":"automatic"}' --apply-to queues
+        rabbitmqctl -n rabbit@rabbitmq-nodo1 cluster_status
+
+volumes:
+  rabbit1-data:
+  rabbit2-data:

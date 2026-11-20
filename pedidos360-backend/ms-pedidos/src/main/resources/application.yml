@@ -1,0 +1,96 @@
+server:
+  port: ${PORT:8083}
+
+spring:
+  application:
+    name: ms-pedidos
+  # Base de datos. Por defecto H2 en memoria (desarrollo). Para PostgreSQL en la nube (RDS) se definen
+  # DB_URL (jdbc:postgresql://HOST:5432/BASE?sslmode=require&currentSchema=pedidos), DB_USER y DB_PASSWORD
+  # como variables de entorno; no se escriben credenciales en este archivo.
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:pedidosdb;DB_CLOSE_DELAY=-1}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO:update}
+    open-in-view: false
+  h2:
+    console:
+      enabled: ${H2_CONSOLE:false}
+  # Conexion a RabbitMQ. Por defecto apunta a localhost (guest/guest).
+  # En AWS no se edita este archivo: se usan variables de entorno
+  # (RABBITMQ_HOST / RABBITMQ_USER / RABBITMQ_PASSWORD, o SPRING_RABBITMQ_ADDRESSES
+  # con la lista de nodos del cluster: ip1:5672,ip2:5672).
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+  # Kafka (streaming de eventos). Fuera de Docker: localhost:9092,9093,9094. En AWS: KAFKA_BOOTSTRAP_SERVERS.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093,localhost:9094}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all                     # el líder espera a las réplicas en sincronía (min.insync.replicas=2)
+      retries: 3
+      properties:
+        enable.idempotence: true    # reintentos sin duplicados
+        spring.json.add.type.headers: false
+        # Si Kafka cae, la API no debe quedar colgada: se espera poco y se registra el error.
+        max.block.ms: 3000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+
+# Endpoints de salud para Docker / balanceadores (/actuator/health)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# ---------------------------------------------------------------------------
+# Topologia de mensajeria. Es la MISMA en todos los servicios: cada servicio
+# declara el exchange y solo las rutas que usa (lista "declarar").
+#
+#   pedidos360.exchange (direct) --routing key--> cola principal
+#   cola principal --mensaje rechazado--> pedidos360.dlx (topic) --> cola DLQ
+#   routing key sin binding --> pedidos360.unroutable (fanout) --> pedidos.noruteados
+# ---------------------------------------------------------------------------
+pedidos360:
+  kafka:
+    topics:
+      pedidos-eventos: pedidos.eventos
+      particiones: 3
+      replicas: 3
+      retencion-ms: 604800000
+  rabbitmq:
+    exchange: pedidos360.exchange
+    dlx: pedidos360.dlx
+    unroutable-exchange: pedidos360.unroutable
+    unroutable-queue: pedidos.noruteados
+    declarar: [registro, notificaciones, tickets]
+    rutas:
+      registro:
+        queue: pedidos.registro
+        routing-key: pedido.registro
+        dlq: pedidos.registro.dlq
+        dlq-routing-key: dlq.pedido.registro
+      notificaciones:
+        queue: pedidos.notificaciones
+        routing-key: pedido.notificacion
+        dlq: pedidos.notificaciones.dlq
+        dlq-routing-key: dlq.pedido.notificacion
+      tickets:
+        queue: pedidos.tickets
+        routing-key: pedido.ticket
+        dlq: pedidos.tickets.dlq
+        dlq-routing-key: dlq.pedido.ticket
+
+# Direcciones de los servicios que consulta ms-pedidos (en Docker Compose se
+# reemplazan por los nombres de servicio: http://ms-productos:8081, etc.)
+servicios:
+  productos-url: ${MS_PRODUCTOS_URL:http://localhost:8081}
+  clientes-url: ${MS_CLIENTES_URL:http://localhost:8082}

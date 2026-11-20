@@ -1,0 +1,37 @@
+server:
+  port: ${PORT:8086}
+
+spring:
+  application:
+    name: ms-kafka-admin
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Conexión a los brokers. En Docker Compose: kafka-1:29092,kafka-2:29092,kafka-3:29092
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093,localhost:9094}
+  timeout-ms: 8000
+  admin:
+    # Al iniciar crea los tópicos que falten (si Kafka no responde, el servicio arranca igual)
+    crear-al-iniciar: ${KAFKA_CREAR_TOPICOS:true}
+    # Tópicos que no se pueden eliminar ni modificar sin ?forzar=true
+    protegidos: [pedidos.eventos, inventario.movimientos]
+    topicos:
+      - nombre: pedidos.eventos
+        particiones: 3
+        replicas: 3
+        configuracion:
+          retention.ms: "604800000"         # 7 días
+          cleanup.policy: delete
+          min.insync.replicas: "2"
+      - nombre: inventario.movimientos
+        particiones: 3
+        replicas: 3
+        configuracion:
+          retention.ms: "86400000"          # 1 día
+          cleanup.policy: delete
+          min.insync.replicas: "2"

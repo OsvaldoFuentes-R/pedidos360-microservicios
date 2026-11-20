@@ -1,0 +1,24 @@
+# Nodo 2 del cluster (EC2 #2).  Uso:  cp .env.example .env  (editar)  &&  docker compose -f docker-compose.nodo2.yml up -d
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq-nodo2
+    hostname: rabbitmq-nodo2
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "4369:4369"
+      - "25672:25672"
+    extra_hosts:
+      - "rabbitmq-nodo1:${IP_NODO1}"
+      - "rabbitmq-nodo2:${IP_NODO2}"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: ${ERLANG_COOKIE}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_NODENAME: rabbit@rabbitmq-nodo2
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+volumes:
+  rabbit-data:

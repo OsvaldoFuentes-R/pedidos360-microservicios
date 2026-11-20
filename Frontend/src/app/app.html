@@ -1,0 +1,45 @@
+@if (!isIframe) {
+  <div class="app">
+    <header class="top">
+      <div class="marca">
+        <span class="logo">⚡</span>
+        <div>
+          <h1>Pedidos360</h1>
+          <p>Microservicios · RabbitMQ · Kafka</p>
+        </div>
+      </div>
+      @if (isLoggedIn()) {
+        <div class="usuario">
+          <span class="pill"><i class="punto"></i>{{ userName() }}</span>
+          @if (userRoles().length > 0) { <span class="pill">Rol: {{ userRoles().join(', ') }}</span> }
+          <button class="btn peligro" (click)="logout()">Cerrar sesión</button>
+        </div>
+      }
+    </header>
+
+    <main class="contenido">
+      @if (!isLoggedIn()) {
+        <div class="login">
+          <div class="candado">🔒</div>
+          <h2>Autenticación requerida</h2>
+          <p>Inicia sesión con tu cuenta de Microsoft (Azure CIAM) para acceder al panel.</p>
+          <button class="btn primario grande" (click)="login()">Iniciar sesión con Microsoft</button>
+        </div>
+      } @else {
+        <nav class="tabs">
+          @for (t of pestanas; track t.id) {
+            <button [class.activa]="pestana() === t.id" (click)="pestana.set(t.id)">{{ t.texto }}</button>
+          }
+        </nav>
+        <section class="panel">
+          @switch (pestana()) {
+            @case ('pedidos') { <app-pedidos /> }
+            @case ('nuevo') { <app-nuevo-pedido /> }
+            @case ('reportes') { <app-reportes /> }
+            @case ('auditoria') { <app-auditoria /> }
+          }
+        </section>
+      }
+    </main>
+  </div>
+}
