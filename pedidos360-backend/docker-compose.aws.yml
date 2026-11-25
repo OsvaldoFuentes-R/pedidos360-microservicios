@@ -1,0 +1,109 @@
+# Compose para la EC2 "app" en AWS: BFF + microservicios.
+# NO incluye RabbitMQ ni Kafka (están en sus propias EC2) y usa PostgreSQL (RDS) en vez de H2.
+#   cp .env.aws.example .env     (editar con tus IPs privadas y claves)
+#   docker compose -f docker-compose.aws.yml up --build -d
+name: pedidos360-app
+
+x-java: &java
+  restart: unless-stopped
+  environment: &java-env
+    JAVA_OPTS: -Xmx256m -XX:+UseSerialGC
+
+x-rabbit-env: &rabbit-env
+  # Los dos nodos del cluster: si uno cae, el cliente se reconecta al otro.
+  SPRING_RABBITMQ_ADDRESSES: ${RABBITMQ_NODO1}:5672,${RABBITMQ_NODO2}:5672
+  RABBITMQ_USER: ${RABBITMQ_USER}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+
+x-kafka-env: &kafka-env
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_HOST}:9092,${KAFKA_HOST}:9093,${KAFKA_HOST}:9094
+
+x-db-env: &db-env
+  DB_USER: ${DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DB_DDL_AUTO: update
+  # Pocas conexiones por servicio: la RDS pequeña tiene un límite bajo de conexiones.
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
+
+services:
+  ms-productos:
+    <<: *java
+    build: ./ms-productos
+    ports: ["8081:8081"]
+    environment:
+      <<: [*java-env, *kafka-env, *db-env]
+      DB_URL: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}?sslmode=require&currentSchema=productos
+
+  ms-clientes:
+    <<: *java
+    build: ./ms-clientes
+    ports: ["8082:8082"]
+    environment:
+      <<: [*java-env, *db-env]
+      DB_URL: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}?sslmode=require&currentSchema=clientes
+
+  ms-pedidos:
+    <<: *java
+    build: ./ms-pedidos
+    ports: ["8083:8083"]
+    environment:
+      <<: [*java-env, *rabbit-env, *kafka-env, *db-env]
+      DB_URL: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}?sslmode=require&currentSchema=pedidos
+      MS_PRODUCTOS_URL: http://ms-productos:8081
+      MS_CLIENTES_URL: http://ms-clientes:8082
+    depends_on: [ms-productos, ms-clientes]
+
+  ms-notificaciones:
+    <<: *java
+    build: ./ms-notificaciones
+    ports: ["8084:8084"]
+    environment:
+      <<: [*java-env, *rabbit-env, *db-env]
+      DB_URL: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}?sslmode=require&currentSchema=notificaciones
+
+  ms-despacho:
+    <<: *java
+    build: ./ms-despacho
+    ports: ["8085:8085"]
+    environment:
+      <<: [*java-env, *rabbit-env, *kafka-env, *db-env]
+      DB_URL: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}?sslmode=require&currentSchema=despacho
+
+  ms-analitica:
+    <<: *java
+    build: ./ms-analitica
+    ports: ["8088:8088"]
+    environment:
+      <<: [*java-env, *kafka-env, *db-env]
+      DB_URL: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}?sslmode=require&currentSchema=analitica
+
+  ms-kafka-admin:
+    <<: *java
+    build: ./ms-kafka-admin
+    ports: ["8086:8086"]
+    environment:
+      <<: [*java-env, *kafka-env]
+
+  ms-rabbitmq-admin:
+    <<: *java
+    build: ./ms-rabbitmq-admin
+    ports: ["8087:8087"]
+    environment:
+      <<: [*java-env, *rabbit-env]
+      RABBITMQ_MANAGEMENT_URL: http://${RABBITMQ_NODO1}:15672
+
+  bff:
+    <<: *java
+    build: ./bff
+    ports: ["8080:8080"]
+    environment:
+      <<: [*java-env, *rabbit-env]
+      MS_PEDIDOS_URL: http://ms-pedidos:8083
+      MS_PRODUCTOS_URL: http://ms-productos:8081
+      MS_CLIENTES_URL: http://ms-clientes:8082
+      MS_DESPACHO_URL: http://ms-despacho:8085
+      MS_ANALITICA_URL: http://ms-analitica:8088
+      CORS_ORIGENES: ${CORS_ORIGENES:-http://localhost:4200}
+      JWT_ISSUER: ${JWT_ISSUER:-}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-}
+    depends_on: [ms-pedidos, ms-despacho]
