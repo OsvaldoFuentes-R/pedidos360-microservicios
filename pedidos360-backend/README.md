@@ -19,7 +19,7 @@ Plataforma de gestión de pedidos con arquitectura de **microservicios**, mensaj
 | `ms-analitica/` | 8088 | **Consume** los dos tópicos Kafka (3 consumer groups): KPIs, stock crítico y auditoría |
 | `infra/rabbitmq/` | – | Cluster RabbitMQ de 2 nodos (AWS, o los 2 en una máquina) |
 | `infra/kafka/` | – | 3 Zookeeper + 3 brokers + creación de tópicos, y Kafka UI |
-| `docs/` | – | Arquitectura, RabbitMQ, Kafka, despliegue y guía de la presentación |
+| `docs/` | – | Arquitectura, RabbitMQ, Kafka, despliegue |
 
 Cada microservicio es un proyecto Spring Boot 3.3 / Java 21 independiente, con su propia base de datos
 (H2 en memoria por defecto, PostgreSQL en la nube con variables de entorno), `pom.xml`, `Dockerfile` y pruebas unitarias.
